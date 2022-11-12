@@ -1,9 +1,13 @@
 package com.mathematics.squares.presentation.view.theme
 
 import androidx.compose.material3.Typography
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.BaselineShift
+import androidx.compose.ui.text.style.TextIndent
 import androidx.compose.ui.unit.sp
 
 // Set of Material typography styles to start with
@@ -29,6 +33,25 @@ val Typography = Typography(
     bodySmall = TextStyle(
         fontFamily = FontFamily(RobotoFont),
         fontSize = 13.sp
+    ),
+    labelLarge = TextStyle(
+        fontFamily = FontFamily(BeautifulFont),
+        fontSize = 20.sp
+    ),
+    labelMedium = TextStyle(
+        fontFamily = FontFamily(BeautifulFont),
+        fontSize = 16.sp,
+        letterSpacing = 3.sp,
+        shadow = Shadow(Color.DarkGray),
+        background = Color.Transparent,
+        baselineShift = BaselineShift.Superscript
+    ),
+    labelSmall = TextStyle(
+        fontFamily = FontFamily(BeautifulFont),
+        fontSize = 13.sp,
+        letterSpacing = 3.sp,
+        shadow = Shadow(Color.DarkGray),
+        textIndent = TextIndent(3.sp, 3.sp)
     )
     /* Other default text styles to override
     labelSmall = TextStyle(

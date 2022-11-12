@@ -1,7 +1,7 @@
 package com.mathematics.squares.presentation.view
 
+import android.content.res.Configuration
 import android.os.Bundle
-import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.animation.core.Spring
@@ -26,6 +26,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -94,19 +95,13 @@ private fun MainScreen(
     val snackbarHostState by remember { mutableStateOf(SnackbarHostState()) }
     val scrollState = rememberScrollState()
 
+    val orientation = LocalConfiguration.current.orientation
+
     val showSnackbar = { text: String ->
-        scope.launch {
-            Log.d("MainScreen", "")
-            snackbarHostState.showSnackbar(text)
-        }
+        scope.launch { snackbarHostState.showSnackbar(text) }
     }
 
     val isShowingTopBar by rememberSaveable { mutableStateOf(true) }
-
-    updateStatusBarColor(
-        if (isShowingTopBar) MaterialTheme.colorScheme.primary
-        else MaterialTheme.colorScheme.background
-    )
 
 
     val squareCountItems = rememberSaveable {
@@ -141,9 +136,18 @@ private fun MainScreen(
                             .animate(Spring.StiffnessLow)
                             .also {
                                 updateStatusBarColor(
-                                    MaterialTheme.colorScheme.primary.copy(
-                                        alpha = if (it.isNaN()) 1f else it
-                                    )
+                                    if (it == 0f)
+                                        MaterialTheme.colorScheme.background
+                                    else
+                                        MaterialTheme.colorScheme.primary.copy(
+                                            alpha = if (it.isNaN()) 1f else it
+                                        )
+//                                        .copy(
+//                                        alpha = if (it.isNaN()) 1f else it
+//                                    )
+//                                            + MaterialTheme.colorScheme.primary.copy(
+//                                        alpha = if (it.isNaN()) 0f else 1 - it
+//                                    )
                                 )
                             },
                     )
@@ -160,65 +164,92 @@ private fun MainScreen(
         },
         containerColor = MaterialTheme.colorScheme.background.animate(),
         contentColor = MaterialTheme.colorScheme.onBackground.animate(),
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxSize()
     ) { contentPadding ->
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
+        Box(
+//            horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier
-                .verticalScroll(scrollState)
-                .padding(contentPadding)
-                .fillMaxWidth()
+                .padding(
+                    if (scrollState.value >= scrollState.maxValue / 8 &&
+                        orientation == Configuration.ORIENTATION_LANDSCAPE
+                    )
+                        PaddingValues(0.dp)
+                    else
+                        contentPadding
+                )
+                .background(Color.Transparent)
+                .fillMaxSize()
         ) {
-            SquareField(padding = 16.dp, squaresMap = square)
-
-            Row(
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier
-                    .padding(horizontal = 16.dp)
-                    .fillMaxWidth(),
+                    .align(Alignment.TopCenter)
+                    .verticalScroll(scrollState)
+                    .fillMaxWidth()
             ) {
-                squareCountItems.keys.sortedDescending().forEachIndexed { index, key ->
-                    SquaresCountField(
-                        hint = key,
-                        imeAction = if (index == squareCountItems.size - 1)
-                            ImeAction.Done
-                        else
-                            ImeAction.Next,
-                        onTextChange = { squareCountItems[key] = it }
+                SquareField(padding = 16.dp, squaresMap = square)
+
+                Row(
+                    modifier = Modifier
+                        .padding(horizontal = 16.dp)
+                        .fillMaxWidth(),
+                ) {
+                    squareCountItems.keys.sortedDescending().forEachIndexed { index, key ->
+                        SquaresCountField(
+                            hint = key,
+                            imeAction = if (index == squareCountItems.size - 1)
+                                ImeAction.Done
+                            else
+                                ImeAction.Next,
+                            onTextChange = { squareCountItems[key] = it }
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                TextButton(
+                    onClick = {
+//                    isShowingTopBar = !isShowingTopBar
+                        scope.launch {
+                            val result = squaresViewModel.updateSquare(
+                                squareSize,
+                                squareCountItems.values.toIntArray()
+                            )
+                            if (!result) {
+                                showSnackbar("Не получилось расставить квадраты \\(o_o)/")
+                                squaresViewModel.updateSquare(mapOf())
+                            }
+                        }
+                    },
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.textButtonColors(
+                        containerColor = MaterialTheme.colorScheme.primary.animate(),
+                        contentColor = MaterialTheme.colorScheme.onPrimary.animate()
+                    ),
+                    border = BorderStroke(1.2.dp, MaterialTheme.colorScheme.onPrimary.animate()),
+                    modifier = Modifier
+                        .padding(horizontal = 16.dp)
+                        .fillMaxWidth()
+                ) {
+                    Text(
+                        text = "Сгенерировать новую комбинацию",
+                        style = MaterialTheme.typography.bodyMedium
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            TextButton(
-                onClick = {
-//                    isShowingTopBar = !isShowingTopBar
-                    scope.launch {
-                        val result = squaresViewModel.updateSquare(
-                            squareSize,
-                            squareCountItems.values.toIntArray()
-                        )
-                        if (!result) {
-                            showSnackbar("Не получилось расставить квадраты \\(o_o)/")
-                            squaresViewModel.updateSquare(mapOf())
-                        }
-                    }
-                },
-                shape = RoundedCornerShape(10.dp),
-                colors = ButtonDefaults.textButtonColors(
-                    containerColor = MaterialTheme.colorScheme.primary.animate(),
-                    contentColor = MaterialTheme.colorScheme.onPrimary.animate()
-                ),
-                border = BorderStroke(1.2.dp, MaterialTheme.colorScheme.onPrimary.animate()),
+            Text(
+                text = stringResource(R.string.app_version).lowercase(),
+                textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onPrimaryContainer.animate(),
                 modifier = Modifier
-                    .padding(horizontal = 16.dp)
+                    .align(Alignment.BottomCenter)
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
                     .fillMaxWidth()
-            ) {
-                Text(
-                    text = "Сгенерировать новую комбинацию",
-                    style = MaterialTheme.typography.bodyMedium
-                )
-            }
+                    .background(Color.Transparent)
+            )
         }
     }
 }
@@ -394,7 +425,7 @@ private fun ConstraintLayoutScope.Square(
 
 @ExperimentalTime
 @ExperimentalMaterial3Api
-@Preview(showBackground = true, showSystemUi = true)
+@Preview(showBackground = true)
 @Composable
 private fun DefaultPreview() {
     SquaresTheme {
@@ -436,7 +467,10 @@ private fun SquarePreview() {
                     .padding(16.dp)
                     .fillMaxWidth()
             ) {
-                Text("Сгенерировать новую комбинацию")
+                Text(
+                    text = "Сгенерировать новую комбинацию",
+                    textAlign = TextAlign.Center
+                )
             }
         }
     }

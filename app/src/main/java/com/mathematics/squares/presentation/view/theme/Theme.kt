@@ -32,7 +32,8 @@ private val DarkColorScheme = darkColorScheme(
     secondary = PurpleGrey80,
     tertiary = Pink80,
     background = BackgroundDark,
-    onBackground = Color.White
+    onBackground = Color.White,
+    onPrimaryContainer = DarkerGray
 )
 
 private val LightColorScheme = lightColorScheme(
@@ -42,7 +43,8 @@ private val LightColorScheme = lightColorScheme(
     secondary = PurpleGrey40,
     tertiary = Pink40,
     background = Color.White,
-    onBackground = Color.Black
+    onBackground = Color.Black,
+    onPrimaryContainer = DarkerGray
 
     /* Other default colors to override
     background = Color(0xFFFFFBFE),
@@ -97,7 +99,7 @@ fun SquaresTheme(
         else -> LightColorScheme
     }
     val statusBarColorArgb = (statusBarColor ?: colorScheme.primary)
-        .animate(stiffness = Spring.StiffnessMedium)
+        .animate(stiffness = Spring.StiffnessHigh)
         .toArgb()
 
     val view = LocalView.current

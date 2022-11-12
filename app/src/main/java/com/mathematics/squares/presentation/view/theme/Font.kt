@@ -4,3 +4,4 @@ import androidx.compose.ui.text.font.Font
 import com.mathematics.squares.R
 
 val RobotoFont = Font(R.font.roboto)
+val BeautifulFont = Font(R.font.pangolin)
