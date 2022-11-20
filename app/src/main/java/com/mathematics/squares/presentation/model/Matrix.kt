@@ -2,13 +2,9 @@ package com.mathematics.squares.presentation.model
 
 import androidx.compose.ui.graphics.Color
 
-class Matrix(val length: Int) : java.io.Serializable {
-    constructor(length: Int, setter: Matrix.() -> Unit) : this(length) {
-        setter()
-    }
-
+class Matrix(private val length: Int) : java.io.Serializable {
     private val data = Array(length) {
-        Array(length) { SquareItem() }
+        Array(length) { Cell() }
     }
 
     private fun <T> Array<Array<T>>.forEachIndexed(action: (i: Int, j: Int, T) -> Unit) {
@@ -17,35 +13,33 @@ class Matrix(val length: Int) : java.io.Serializable {
         }
     }
 
-    val area get() = length * length
-
-    val freeSpace get() = data.flatten().filter { !it.isOccupied }.size
-
-    fun forEachIndexed(action: (i: Int, j: Int, SquareItem) -> Unit) {
+    private fun forEachIndexed(action: (i: Int, j: Int, Cell) -> Unit) {
         data.forEachIndexed(action)
     }
 
-    operator fun get(i: Int, j: Int) = data[i % length][j % length]
-    operator fun set(i: Int, j: Int, value: SquareItem) {
+    private fun getOrNull(i: Int, j: Int) = data.getOrNull(i)?.getOrNull(j)
+
+    operator fun get(i: Int, j: Int) = data[i][j]
+    operator fun set(i: Int, j: Int, value: Cell) {
         data[i % length][j % length] = value
     }
     operator fun get(position: Int) = get(position / length, position % length)
-    operator fun set(position: Int, value: SquareItem) =
+    operator fun set(position: Int, value: Cell) =
         set(position / length, position % length, value)
 
     operator fun set(i: Int, j: Int, length: Int, color: Color) =
-        fillArea(Cords(i, j), length, color)
+        fillArea(Cords(i, j), length, color) != null
 
-    fun <R> updateElementAt(position: Int, action: SquareItem.() -> R) =
-        get(position).action()
+    operator fun set(i: Int, j: Int, square: Square) =
+        fillArea(Cords(i, j), square.sideLength, square.color)
 
-    private fun <R> updateElementAt(i: Int, j: Int, action: SquareItem.() -> R) =
-        get(i, j).action()
+    private fun <R> updateElementAt(i: Int, j: Int, action: Cell.() -> R) =
+        getOrNull(i, j)?.action()
 
-    private fun fillArea(topLeftCords: Cords, length: Int, color: Color): Boolean {
+    private fun fillArea(topLeftCords: Cords, length: Int, color: Color): Cords? {
         synchronized(this) {
-            if (!checkArea(topLeftCords, topLeftCords + length))
-                return false
+            if (!canFill(topLeftCords = topLeftCords, sideLength = length))
+                return null
 
             for (i in topLeftCords.x until topLeftCords.x + length) {
                 for (j in topLeftCords.y until topLeftCords.y + length) {
@@ -61,16 +55,38 @@ class Matrix(val length: Int) : java.io.Serializable {
                     }
                 }
             }
-            return true
+            return topLeftCords
         }
     }
 
-    fun clear() {
-        data.flatten().forEach { it.clear() }
+    fun fillAreaByTopLeft(topLeftCords: Cords, square: Square): Cords? {
+        return fillArea(topLeftCords, square.sideLength, square.color)
     }
 
+    fun fillAreaByBottomLeft(bottomLeftCords: Cords, square: Square): Cords? =
+        fillArea(
+            topLeftCords = bottomLeftCords - Cords(square.sideLength - 1, 0),
+            color = square.color,
+            length = square.sideLength,
+        )
 
-    fun filter(filterAction: (SquareItem) -> Boolean): List<Cords> {
+    fun fillAreaByBottomRight(bottomRightCords: Cords, square: Square): Cords? {
+        return fillArea(
+            topLeftCords = bottomRightCords - square.sideLength + 1,
+            color = square.color,
+            length = square.sideLength
+        )
+    }
+
+    fun fillAreaByTopRight(topRightCords: Cords, square: Square): Cords? =
+        fillArea(
+            topLeftCords = topRightCords.copy(y = topRightCords.y - square.sideLength + 1),
+            length = square.sideLength,
+            color = square.color
+        )
+
+
+    fun filter(filterAction: (Cell) -> Boolean): List<Cords> {
         return buildList {
             forEachIndexed { i, j, squareItem ->
                 if (filterAction(squareItem)) {
@@ -81,37 +97,40 @@ class Matrix(val length: Int) : java.io.Serializable {
     }
 
 
-    private fun checkArea(topLeftCords: Cords, bottomRightCords: Cords): Boolean {
-        for (i in topLeftCords.x until bottomRightCords.x)
-            for (j in topLeftCords.y until bottomRightCords.y)
-                if (this[i, j].isOccupied)
+    private fun canFill(topLeftCords: Cords, sideLength: Int): Boolean {
+        for (i in topLeftCords.x until topLeftCords.x + sideLength) {
+            for (j in topLeftCords.y until topLeftCords.y + sideLength) {
+                if (getOrNull(i, j) == null || this[i, j].isOccupied) {
                     return false
+                }
+            }
+        }
         return true
     }
 }
 
 
-data class SquareItem(
+data class Cell(
     var isOccupied: Boolean = false,
     var backgroundColor: Color? = null,
     var borderColor: Color? = null
-) {
-    fun clear() {
-        isOccupied = false
-        backgroundColor = null
-        borderColor = null
-    }
-}
-
-
-
+)
 
 
 data class Cords(
     val x: Int,
     val y: Int
-) {
-    operator fun plus(count: Int) = Cords(x + count, y + count)
+) : Comparable<Cords> {
+    operator fun plus(count: Int) = this + Cords(count, count)
+    operator fun minus(count: Int) = this - Cords(count, count)
+    operator fun plus(cords: Cords) = Cords(x + cords.x, y + cords.y)
+    operator fun minus(cords: Cords) = Cords(x - cords.x, y - cords.y)
+    override fun compareTo(other: Cords): Int {
+        return when {
+            this.x.compareTo(other.x) != 0 -> this.x.compareTo(other.x)
+            else -> this.y.compareTo(other.y)
+        }
+    }
 }
 
 operator fun <V> HashMap<Cords, V>.set(x: Int, y: Int, value: V) {

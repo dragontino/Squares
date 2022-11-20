@@ -29,21 +29,62 @@ class SquaresViewModel(private val squaresRepository: SquaresRepository) : ViewM
         }
     }
 
-    val square = MutableLiveData(mapOf<Cords, Square>())
+    val squaresMap = MutableLiveData(mapOf<Cords, Square>())
 
-    fun updateSquare(square: Map<Cords, Square>) {
-        this.square.value = square
+    fun updateSquaresMap(squaresMap: Map<Cords, Square>) {
+        this.squaresMap.value = squaresMap
+    }
+
+    suspend fun updateSquaresMap(
+        squareSideLength: Int,
+        squareCounts: IntArray,
+        recalculate: Boolean = true
+    ): Boolean {
+        return if (recalculate) {
+            calculateSquaresPositions(squareSideLength, squareCounts).also {
+                if (it != null) this.squaresMap.value = it
+            } != null
+        } else {
+            this.squaresMap.value = updateSquaresPositions(squareSideLength)
+            true
+        }
     }
 
 
-    fun getRandomColor() = squaresRepository.getRandomColor()
+    private suspend fun updateSquaresPositions(
+        squareSideLength: Int,
+    ): Map<Cords, Square> {
+        val squaresMap = squaresMap.value ?: mapOf()
+        return squaresRepository.updateSquaresPositions(
+            squareSideLength = squareSideLength,
+            squaresList = squaresMap.toSquaresList(squareSideLength)
+        )
+    }
 
 
-    suspend fun updateSquare(squareLength: Int, squareCounts: IntArray) =
-        calculateSquaresPositions(squareLength, squareCounts).also {
-//            Log.d("SquaresViewModel", "free space = ${it?.freeSpace}")
-            if (it != null) this.square.value = it
-        } != null
+    private fun getRandomColor() = squaresRepository.getRandomColor()
+
+
+    private fun Map<Cords, Square>.toSquaresList(squareSideLength: Int): List<Square> {
+        val newColors = mapOf(
+            5 to getRandomColor(),
+            4 to getRandomColor(),
+            3 to getRandomColor(),
+            2 to getRandomColor(),
+        )
+        return this.keys.sorted()
+            .map { cords ->
+                val size = this[cords]?.sideLength ?: 1
+                Square(size, color = newColors[size] ?: getRandomColor())
+            }
+            .ifEmpty {
+                buildList {
+                    repeat(squareSideLength * squareSideLength) {
+                        add(Square(sideLength = 1, color = getRandomColor()))
+                    }
+                }
+            }
+    }
 
 
     suspend fun calculateSquaresPositions(
@@ -52,15 +93,21 @@ class SquaresViewModel(private val squaresRepository: SquaresRepository) : ViewM
         x4: Int = 0,
         x3: Int = 0,
         x2: Int = 0
-    ) = squaresRepository.calculateSquaresPositions(squareLength, x5, x4, x3, x2)
+    ) = calculateSquaresPositions(squareLength, intArrayOf(x5, x4, x3, x2))
 
 
-    private suspend fun calculateSquaresPositions(squareLength: Int, squareCounts: IntArray) =
-        calculateSquaresPositions(
-            squareLength = squareLength,
-            x5 = squareCounts[0],
-            x4 = squareCounts[1],
-            x3 = squareCounts[2],
-            x2 = squareCounts[3]
-        )
+    private suspend fun calculateSquaresPositions(
+        squareLength: Int,
+        squareCounts: IntArray,
+    ): Map<Cords, Square>? {
+        val squaresList = buildList {
+            squareCounts.forEachIndexed { index, count ->
+                val color = getRandomColor()
+                repeat(count) {
+                    this += Square(sideLength = 5 - index, color = color)
+                }
+            }
+        }
+        return squaresRepository.placeSquares(squareLength, squaresList)
+    }
 }

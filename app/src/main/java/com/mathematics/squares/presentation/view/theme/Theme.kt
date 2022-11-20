@@ -4,9 +4,13 @@ import android.app.Activity
 import android.os.Build
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
@@ -20,6 +24,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.liveData
@@ -72,6 +78,22 @@ fun Float.animate(stiffness: Float = Spring.StiffnessMediumLow): Float =
         animationSpec = spring(stiffness = stiffness)
     ).value
 
+@Composable
+fun Dp.animate(stiffness: Float = Spring.StiffnessMediumLow): Dp =
+    animateDpAsState(
+        targetValue = this,
+        animationSpec = spring(stiffness = stiffness)
+    ).value
+
+@Composable
+fun PaddingValues.animate(stiffness: Float = Spring.StiffnessMediumLow): PaddingValues {
+    return PaddingValues(
+        top = this.calculateTopPadding().animate(stiffness),
+        bottom = this.calculateBottomPadding().animate(stiffness),
+        start = this.calculateStartPadding(LayoutDirection.Ltr).animate(stiffness),
+        end = this.calculateEndPadding(LayoutDirection.Ltr).animate(stiffness)
+    )
+}
 
 
 
@@ -79,7 +101,7 @@ fun Float.animate(stiffness: Float = Spring.StiffnessMediumLow): Float =
 fun SquaresTheme(
     settingsLiveData: LiveData<Settings> = liveData { emit(Settings()) },
     statusBarColor: Color? = null,
-    dynamicColor: Boolean = false,
+    dynamicColor: Boolean = true,
     content: @Composable (Themes) -> Unit
 ) {
     val settings by settingsLiveData.observeAsState(Settings())
@@ -108,7 +130,7 @@ fun SquaresTheme(
             val window = (view.context as Activity).window
             window.statusBarColor = statusBarColorArgb
             WindowCompat.getInsetsController(window, view)
-                .isAppearanceLightStatusBars = !isDarkTheme
+                .isAppearanceLightStatusBars = dynamicColor == isDarkTheme
         }
     }
 

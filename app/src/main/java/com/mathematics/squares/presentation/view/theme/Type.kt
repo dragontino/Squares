@@ -7,7 +7,6 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.BaselineShift
-import androidx.compose.ui.text.style.TextIndent
 import androidx.compose.ui.unit.sp
 
 // Set of Material typography styles to start with
@@ -51,7 +50,8 @@ val Typography = Typography(
         fontSize = 13.sp,
         letterSpacing = 3.sp,
         shadow = Shadow(Color.DarkGray),
-        textIndent = TextIndent(3.sp, 3.sp)
+        background = Color.Transparent,
+        baselineShift = BaselineShift.Superscript
     )
     /* Other default text styles to override
     labelSmall = TextStyle(

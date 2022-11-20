@@ -1,14 +1,19 @@
 package com.mathematics.squares.data.repository
 
-import android.util.Log
 import androidx.compose.ui.graphics.Color
 import com.mathematics.squares.presentation.model.Cords
-import com.mathematics.squares.presentation.model.Square
 import com.mathematics.squares.presentation.model.Matrix
-import com.mathematics.squares.presentation.model.set
+import com.mathematics.squares.presentation.model.Square
 import com.mathematics.squares.presentation.view.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlin.collections.HashMap
+import kotlin.collections.List
+import kotlin.collections.Map
+import kotlin.collections.forEach
+import kotlin.collections.set
+import kotlin.collections.shuffle
+import kotlin.collections.shuffled
 import kotlin.random.Random
 
 class SquaresRepository {
@@ -20,95 +25,193 @@ class SquaresRepository {
 
     fun getRandomColor() = colors.apply { shuffle() }[0]
 
-    suspend fun calculateSquaresPositions(
-        squareLength: Int,
-        x5: Int,
-        x4: Int,
-        x3: Int,
-        x2: Int
-    ): Map<Cords, Square>? /*Square?*/ {
 
-        val matrix = Matrix(squareLength)
-        val squaresMap = HashMap<Cords, Square>()
+    suspend fun updateSquaresPositions(
+        squareSideLength: Int,
+        squaresList: List<Square>,
+    ): Map<Cords, Square> = withContext(Dispatchers.Default) {
+        var result: Map<Cords, Square>?
+        do {
+            val shuffledList = squaresList.shuffled()
+            result = placeSquares(squareSideLength, shuffledList)
+        } while (result == null)
 
-        if (25 * x5 + 16 * x4 + 9 * x3 + 4 * x2 > matrix.area)
-            return null
-
-        colors.shuffle()
-
-
-        val result = findSquarePlace(
-            fieldSize = matrix.length,
-            countMap = mapOf(5 to x5, 4 to x4, 3 to x3, 2 to x2)
-        ) { x, y, length, color ->
-            matrix.set(x, y, length, color).also {
-                if (it) squaresMap[x, y] = Square(length, color)
-            }
-        }
-
-        matrix.filter { !it.isOccupied }.forEach {
-            val color = getRandomColor()
-            matrix[it.x, it.y, 1] = color
-            squaresMap[it] = Square(1, color)
-        }
-
-        Log.d("SquaresRepo", "Свободное место = ${matrix.freeSpace}")
-
-        return squaresMap //square //if (result) square else null
+        return@withContext result
     }
 
 
-    private suspend fun findSquarePlace(
-        countMap: Map<Int, Int>,
-        fieldSize: Int,
-        startLength: Int = 5,
-        startIndex: Int = 0,
-        fillArea: (x: Int, y: Int, length: Int, color: Color) -> Boolean
-    ): Boolean {
-        if (startLength < 1)
-            return true
 
-        val maxRepeat = 1000
-        val cordsList = ArrayList<Cords>()
-        var repeatersCount = 0
-        val steps = countMap[startLength] ?: 0
+    suspend fun placeSquares(
+        squareSideLength: Int,
+        squaresList: List<Square>,
+    ): Map<Cords, Square>? {
+        val matrix = Matrix(squareSideLength)
+        val result = HashMap<Cords, Square>()
 
-        suspend fun generateCords() = withContext(Dispatchers.Main) {
-            var x: Int
-            var y: Int
+        var startPosition = 0
+        val loopDirection = getRandomDirection()
+        val startVertex = getRandomStartVertex()
 
-            for (i in startIndex until steps + startIndex) {
-                do {
-                    x = Random.nextInt(0, fieldSize - startLength + 1)
-                    y = Random.nextInt(0, fieldSize - startLength + 1)
-                    repeatersCount++
-                } while (
-                    !fillArea(x, y, startLength, colors[i % colors.size]) &&
-                    repeatersCount < maxRepeat ||
-                    Cords(x, y) in cordsList
-                )
-                if (repeatersCount > maxRepeat) {
-                    cordsList.clear()
-                    return@withContext null
+        squaresList.forEach { square ->
+            // TODO: 20.11.2022 заменить
+            var flag = false
+            for (position in startPosition until squareSideLength * squareSideLength) {
+                val cords = getNextCords(position, squareSideLength, loopDirection, startVertex)
+
+                val topLeftCords = withContext(Dispatchers.Main) {
+                    when (startVertex) {
+                        StartVertex.TopLeft -> matrix.fillAreaByTopLeft(cords, square)
+                        StartVertex.TopRight -> matrix.fillAreaByTopRight(cords, square)
+                        StartVertex.BottomLeft -> matrix.fillAreaByBottomLeft(cords, square)
+                        StartVertex.BottomRight -> matrix.fillAreaByBottomRight(cords, square)
+                    }
                 }
-                cordsList += Cords(x, y)
+
+                if (topLeftCords != null) { //matrix.set(i, j, square)) {
+                    result[topLeftCords] = square
+                    startPosition = position + square.sideLength
+                    flag = true
+                    break
+                }
+            }
+            if (!flag) return null
+        }
+
+//        for (i in createRange()) {
+////            withContext(Dispatchers.Main) {
+//                for (j in createRange()) {
+//                    val currSquare = squaresList[squareIndex]
+//                    if (matrix.set(i, j, currSquare.size, currSquare.color)) {
+//                        result[i, j] = currSquare
+//                        squareIndex++
+//                        if (squareIndex >= squaresList.size)
+//                            break //return@withContext
+//                    }
+//                }
+////            }
+//            if (squareIndex >= squaresList.size) break
+//        }
+
+        withContext(Dispatchers.Default) {
+            matrix.filter { !it.isOccupied }.forEach {
+                val color = getRandomColor()
+                matrix[it.x, it.y, 1] = color
+                result[it] = Square(1, color)
             }
         }
 
-        return if (generateCords() == null) {
-            Log.d("SquaresRepo", "repeatersCount = $repeatersCount")
-            false
-        }
-        else {
-            val result = findSquarePlace(
-                startLength = startLength - 1,
-                startIndex = startIndex + steps,
-                countMap = countMap,
-                fieldSize = fieldSize,
-                fillArea = fillArea
-            )
+        return result
+    }
 
-            return if (!result) generateCords() != null else true
+    private fun getNextCords(
+        position: Int,
+        sideLength: Int,
+        loopDirection: LoopDirection,
+        startVertex: StartVertex,
+    ): Cords {
+        val leftToRightY = position % sideLength
+        val rightToLeftY = sideLength - position % sideLength - 1
+        val topToBottomX = position / sideLength
+        val bottomToTopX = sideLength - position / sideLength - 1
+
+        val cords = when (startVertex) {
+            StartVertex.TopLeft -> {
+                when (loopDirection) {
+                    LoopDirection.Parallel -> Cords(
+                        x = topToBottomX,
+                        y = leftToRightY
+                    )
+                    LoopDirection.Consistently -> Cords(
+                        x = topToBottomX,
+                        y = if (topToBottomX % 2 == 0) leftToRightY else rightToLeftY
+                    )
+                }
+            }
+            StartVertex.TopRight -> {
+                when (loopDirection) {
+                    LoopDirection.Consistently -> Cords(
+                        x = topToBottomX,
+                        y = if (topToBottomX % 2 != 0) leftToRightY else rightToLeftY
+                    )
+                    LoopDirection.Parallel -> Cords(
+                        x = topToBottomX,
+                        y = rightToLeftY
+                    )
+                }
+            }
+            StartVertex.BottomLeft -> {
+                when (loopDirection) {
+                    LoopDirection.Consistently -> Cords(
+                        x = bottomToTopX,
+                        y = if (topToBottomX % 2 == 0) leftToRightY else rightToLeftY
+                    )
+                    LoopDirection.Parallel -> Cords(
+                        x = bottomToTopX,
+                        y = leftToRightY,
+                    )
+                }
+            }
+            StartVertex.BottomRight -> {
+                when (loopDirection) {
+                    LoopDirection.Consistently -> Cords(
+                        x = bottomToTopX,
+                        y = if (topToBottomX % 2 != 0) leftToRightY else rightToLeftY,
+                    )
+                    LoopDirection.Parallel -> Cords(
+                        x = bottomToTopX,
+                        y = rightToLeftY,
+                    )
+                }
+            }
+        }
+
+        return if (loopDirection.horizontally) {
+            cords
+        } else when (startVertex) {
+            StartVertex.TopLeft -> cords.transposeRelativeMainDiagonal()
+            StartVertex.TopRight -> cords.transposeRelativeSideDiagonal(sideLength)
+            StartVertex.BottomLeft -> cords.transposeRelativeSideDiagonal(sideLength)
+            StartVertex.BottomRight -> cords.transposeRelativeMainDiagonal()
         }
     }
+
+    private fun getRandomDirection() = with(LoopDirection.objects()) {
+        this[Random.nextInt(until = size)].apply {
+            if (Random.nextInt(2) != 0) transpose()
+        }
+    }
+
+    private fun getRandomStartVertex() = with(StartVertex.values()) {
+        this[Random.nextInt(until = size)]
+    }
+
+
+    private sealed class LoopDirection {
+        var horizontally: Boolean = true
+        private set
+
+        object Parallel : LoopDirection()
+        object Consistently : LoopDirection()
+
+        companion object {
+            fun objects() = arrayOf(Parallel, Consistently)
+        }
+
+        fun transpose() {
+            horizontally = !horizontally
+        }
+    }
+
+    private enum class StartVertex {
+        TopLeft,
+        TopRight,
+        BottomLeft,
+        BottomRight;
+    }
+
+    private fun Cords.transposeRelativeMainDiagonal() =
+        Cords(x = this.y, y = this.x)
+
+    private fun Cords.transposeRelativeSideDiagonal(size: Int) =
+        Cords(x = size - this.y - 1, y = size - this.x - 1)
 }

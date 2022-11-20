@@ -4,7 +4,9 @@ import android.content.res.Configuration
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.animation.*
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -17,6 +19,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
@@ -42,18 +45,14 @@ import com.mathematics.squares.presentation.view.theme.*
 import com.mathematics.squares.presentation.viewmodel.SettingsViewModel
 import com.mathematics.squares.presentation.viewmodel.SquaresViewModel
 import kotlinx.coroutines.launch
-import kotlin.time.ExperimentalTime
 
 private const val squareSize = 12
 
+@ExperimentalAnimationApi
+@ExperimentalFoundationApi
+@ExperimentalStdlibApi
 @ExperimentalMaterial3Api
 class MainActivity : ComponentActivity() {
-    companion object {
-        init {
-            System.loadLibrary("squares")
-        }
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -82,18 +81,21 @@ class MainActivity : ComponentActivity() {
 }
 
 
+@ExperimentalAnimationApi
+@ExperimentalFoundationApi
 @ExperimentalMaterial3Api
 @Composable
 private fun MainScreen(
     squaresViewModel: SquaresViewModel,
     theme: Themes,
     updateStatusBarColor: (Color) -> Unit = {},
-    updateTheme: (Themes) -> Unit
+    updateTheme: (Themes) -> Unit,
 ) {
-    val square by squaresViewModel.square.observeAsState(initial = mapOf())
+    val squaresMap by squaresViewModel.squaresMap.observeAsState(initial = mapOf())
     val scope = rememberCoroutineScope()
     val snackbarHostState by remember { mutableStateOf(SnackbarHostState()) }
     val scrollState = rememberScrollState()
+    var calculating by rememberSaveable { mutableStateOf(false) }
 
     val orientation = LocalConfiguration.current.orientation
 
@@ -101,12 +103,10 @@ private fun MainScreen(
         scope.launch { snackbarHostState.showSnackbar(text) }
     }
 
-    val isShowingTopBar by rememberSaveable { mutableStateOf(true) }
-
-
     val squareCountItems = rememberSaveable {
         mutableMapOf("5x5" to 0, "4x4" to 0, "3x3" to 0, "2x2" to 0)
     }
+    var recalculateSquares by rememberSaveable { mutableStateOf(false) }
     
     Scaffold(
         topBar = {
@@ -130,10 +130,8 @@ private fun MainScreen(
                 ),
                 modifier = Modifier
                     .alpha(
-                        (if (isShowingTopBar)
-                            1 - scrollState.value / scrollState.maxValue.toFloat()
-                        else 0f)
-                            .animate(Spring.StiffnessLow)
+                        (1 - scrollState.value / scrollState.maxValue.toFloat())
+                            .animate()
                             .also {
                                 updateStatusBarColor(
                                     if (it == 0f)
@@ -142,12 +140,6 @@ private fun MainScreen(
                                         MaterialTheme.colorScheme.primary.copy(
                                             alpha = if (it.isNaN()) 1f else it
                                         )
-//                                        .copy(
-//                                        alpha = if (it.isNaN()) 1f else it
-//                                    )
-//                                            + MaterialTheme.colorScheme.primary.copy(
-//                                        alpha = if (it.isNaN()) 0f else 1 - it
-//                                    )
                                 )
                             },
                     )
@@ -166,17 +158,15 @@ private fun MainScreen(
         contentColor = MaterialTheme.colorScheme.onBackground.animate(),
         modifier = Modifier.fillMaxSize()
     ) { contentPadding ->
+        val paddingValues = if (
+            scrollState.value >= scrollState.maxValue / 8 &&
+            orientation == Configuration.ORIENTATION_LANDSCAPE
+        ) PaddingValues(0.dp)
+        else contentPadding
+
         Box(
-//            horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier
-                .padding(
-                    if (scrollState.value >= scrollState.maxValue / 8 &&
-                        orientation == Configuration.ORIENTATION_LANDSCAPE
-                    )
-                        PaddingValues(0.dp)
-                    else
-                        contentPadding
-                )
+                .padding(paddingValues.animate(Spring.StiffnessVeryLow))
                 .background(Color.Transparent)
                 .fillMaxSize()
         ) {
@@ -187,69 +177,71 @@ private fun MainScreen(
                     .verticalScroll(scrollState)
                     .fillMaxWidth()
             ) {
-                SquareField(padding = 16.dp, squaresMap = square)
+                SquareField(squaresMap = squaresMap, padding = 16.dp)
 
-                Row(
+                Column(
                     modifier = Modifier
-                        .padding(horizontal = 16.dp)
+                        .padding(horizontal = 8.dp)
                         .fillMaxWidth(),
                 ) {
-                    squareCountItems.keys.sortedDescending().forEachIndexed { index, key ->
-                        SquaresCountField(
-                            hint = key,
-                            imeAction = if (index == squareCountItems.size - 1)
-                                ImeAction.Done
-                            else
-                                ImeAction.Next,
-                            onTextChange = { squareCountItems[key] = it }
+                    Row(horizontalArrangement = Arrangement.SpaceBetween) {
+                        squareCountItems.keys.sortedDescending().forEach { key ->
+                            SquaresCountField(hint = key) {
+                                recalculateSquares = true
+                                squareCountItems[key] = it
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    TextButton(
+                        onClick = {
+                            scope.launch {
+                                calculating = true
+                                val result = squaresViewModel.updateSquaresMap(
+                                    squareSize,
+                                    squareCountItems.values.toIntArray(),
+                                    recalculate = recalculateSquares,
+                                )
+                                recalculateSquares = false
+                                calculating = false
+
+                                if (!result) {
+                                    showSnackbar("Не получилось расставить квадраты \\(o_o)/")
+                                    squaresViewModel.updateSquaresMap(mapOf())
+                                }
+                            }
+                        },
+                        enabled = !calculating,
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.textButtonColors(
+                            containerColor = MaterialTheme.colorScheme.primary.animate(),
+                            contentColor = MaterialTheme.colorScheme.onPrimary.animate(),
+                            disabledContentColor = MaterialTheme.colorScheme.primary
+                                .copy(alpha = 0.4f).animate()
+                        ),
+                        border = BorderStroke(
+                            width = 0.7.dp,
+                            color = MaterialTheme.colorScheme.primary
+                                .copy(alpha = if (calculating) 0.4f else 1f),
+                        ),
+                        modifier = Modifier
+                            .padding(horizontal = 8.dp)
+                            .fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "Сгенерировать новую комбинацию",
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(vertical = 6.dp)
                         )
                     }
                 }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                TextButton(
-                    onClick = {
-//                    isShowingTopBar = !isShowingTopBar
-                        scope.launch {
-                            val result = squaresViewModel.updateSquare(
-                                squareSize,
-                                squareCountItems.values.toIntArray()
-                            )
-                            if (!result) {
-                                showSnackbar("Не получилось расставить квадраты \\(o_o)/")
-                                squaresViewModel.updateSquare(mapOf())
-                            }
-                        }
-                    },
-                    shape = RoundedCornerShape(10.dp),
-                    colors = ButtonDefaults.textButtonColors(
-                        containerColor = MaterialTheme.colorScheme.primary.animate(),
-                        contentColor = MaterialTheme.colorScheme.onPrimary.animate()
-                    ),
-                    border = BorderStroke(1.2.dp, MaterialTheme.colorScheme.onPrimary.animate()),
-                    modifier = Modifier
-                        .padding(horizontal = 16.dp)
-                        .fillMaxWidth()
-                ) {
-                    Text(
-                        text = "Сгенерировать новую комбинацию",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                }
             }
 
-            Text(
-                text = stringResource(R.string.app_version).lowercase(),
-                textAlign = TextAlign.Center,
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onPrimaryContainer.animate(),
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
-                    .fillMaxWidth()
-                    .background(Color.Transparent)
-            )
+            Loading(calculating)
+
+            Version()
         }
     }
 }
@@ -258,10 +250,8 @@ private fun MainScreen(
 @ExperimentalMaterial3Api
 @Composable
 private fun RowScope.SquaresCountField(
-//    text: String,
     hint: String,
-    imeAction: ImeAction,
-    onTextChange: (Int) -> Unit
+    onTextChange: (Int) -> Unit,
 ) {
     var rememberedText by rememberSaveable { mutableStateOf("") }
     val focusManager = LocalFocusManager.current
@@ -282,12 +272,12 @@ private fun RowScope.SquaresCountField(
         supportingText = { Text(text = hint, style = MaterialTheme.typography.bodySmall) },
         keyboardOptions = KeyboardOptions(
             keyboardType = KeyboardType.Number,
-            imeAction = imeAction
+            imeAction = ImeAction.Done
         ),
         keyboardActions = KeyboardActions(
             onDone = { focusManager.clearFocus() }
         ),
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(20.dp),
         colors = TextFieldDefaults.outlinedTextFieldColors(
             textColor = MaterialTheme.colorScheme.onBackground.animate(),
             containerColor = MaterialTheme.colorScheme.primaryContainer.animate(),
@@ -323,57 +313,65 @@ internal fun SquareField(squaresMap: Map<Cords, Square>, padding: Dp) {
 
     fun getShape(cords: Cords, size: Int) = getShape(cords.x, cords.y, size)
 
-    ConstraintLayout(
-        modifier = Modifier.padding(padding)
-    ) {
+    ConstraintLayout(modifier = Modifier.padding(padding)) {
         val field = createRef()
 
-        Box(
-            modifier = Modifier
-                .border(
-                    width = borderWidth,
-                    color = MaterialTheme.colorScheme.onBackground.animate(),
-                    shape = RoundedCornerShape(cornerSize)
-                )
-                .background(
-                    color = MaterialTheme.colorScheme.background.animate(),
-                    shape = RoundedCornerShape(cornerSize)
-                )
-                .constrainAs(field) {
-                    top.linkTo(parent.top)
-                }
-        ) {
-            Column {
-                repeat(squareSize) { i ->
-                    Row {
-                        repeat(squareSize) { j ->
-//                            val backgroundColor = square[i, j].backgroundColor
-//                                ?: MaterialTheme.colorScheme.background
-//                            val borderColor = square[i, j].borderColor
-//                                ?: MaterialTheme.colorScheme.onBackground
-
-                            Cell(
-                                size = cellSize,
-                                backgroundColor = MaterialTheme.colorScheme.background.animate(),
-                                border = BorderStroke(
-                                    width = borderWidth / 2,
-                                    color = MaterialTheme.colorScheme.primaryContainer.animate()
-                                ),
-                                shape = getShape(i, j, 1)
-                            )
-                        }
-                    }
-                }
-            }
-        }
+        EmptyCellsField(
+            cellSize = cellSize,
+            getShape = ::getShape,
+            modifier = Modifier.constrainAs(field) {
+                top.linkTo(parent.top)
+            },
+        )
 
         squaresMap.forEach { (cords, square) ->
             Square(
                 topLeftCords = cords,
                 cellSize = cellSize,
                 square = square,
-                shape = getShape(cords, size = square.size)
+                shape = getShape(cords, size = square.sideLength)
             )
+        }
+    }
+}
+
+
+
+
+@Composable
+private fun EmptyCellsField(
+    cellSize: Dp,
+    modifier: Modifier = Modifier,
+    getShape: (i: Int, j: Int, size: Int) -> Shape,
+) {
+    Box(
+        modifier = modifier
+            .border(
+                width = borderWidth,
+                color = MaterialTheme.colorScheme.onBackground.animate(),
+                shape = RoundedCornerShape(cornerSize)
+            )
+            .background(
+                color = MaterialTheme.colorScheme.background.animate(),
+                shape = RoundedCornerShape(cornerSize)
+            )
+    ) {
+        Column {
+            repeat(squareSize) { i ->
+                Row {
+                    repeat(squareSize) { j ->
+                        Cell(
+                            size = cellSize,
+                            backgroundColor = MaterialTheme.colorScheme.background.animate(),
+                            border = BorderStroke(
+                                width = borderWidth / 2,
+                                color = MaterialTheme.colorScheme.primaryContainer.animate()
+                            ),
+                            shape = getShape(i, j, 1)
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -393,15 +391,38 @@ private fun Cell(size: Dp, backgroundColor: Color, border: BorderStroke, shape: 
 
 
 @Composable
+private fun ConstraintLayoutScope.Box(
+    topLeftCords: Cords,
+    cellSize: Dp,
+    sideLength: Int,
+    modifier: Modifier = Modifier,
+    content: @Composable BoxScope.() -> Unit = {}
+) {
+    val ref = createRef()
+    Box(
+        modifier = modifier
+            .size(cellSize * sideLength)
+            .constrainAs(ref) {
+                top.linkTo(parent.top, margin = cellSize * topLeftCords.x + borderWidth / 2)
+                start.linkTo(parent.start, margin = cellSize * topLeftCords.y + borderWidth / 2)
+            },
+        content = content
+    )
+}
+
+
+
+@Composable
 private fun ConstraintLayoutScope.Square(
     topLeftCords: Cords,
     cellSize: Dp,
     square: Square,
-    shape: Shape
+    shape: Shape,
 ) {
-    val ref = createRef()
-
     Box(
+        topLeftCords = topLeftCords,
+        cellSize = cellSize,
+        sideLength = square.sideLength,
         modifier = Modifier
             .background(square.color.animate(), shape)
             .border(
@@ -411,19 +432,63 @@ private fun ConstraintLayoutScope.Square(
                     .animate(),
                 shape = shape
             )
-            .size(cellSize * square.size)
-            .constrainAs(ref) {
-                top.linkTo(parent.top, margin = cellSize * topLeftCords.x + borderWidth / 2)
-                start.linkTo(parent.start, margin = cellSize * topLeftCords.y + borderWidth / 2)
-            }
     )
+}
+
+
+@Composable
+private fun BoxScope.Version() {
+    Text(
+        text = stringResource(R.string.app_version).lowercase(),
+        textAlign = TextAlign.Center,
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onPrimaryContainer.animate(),
+        modifier = Modifier
+            .align(Alignment.BottomCenter)
+            .padding(horizontal = 8.dp, vertical = 4.dp)
+            .fillMaxWidth()
+            .background(Color.Transparent)
+    )
+}
+
+
+
+@ExperimentalAnimationApi
+@Composable
+private fun Loading(isLoading: Boolean) {
+    AnimatedVisibility(
+        visible = isLoading,
+        enter = fadeIn(spring(stiffness = Spring.StiffnessHigh)),
+        exit = fadeOut(spring(stiffness = Spring.StiffnessVeryLow)),
+    ) {
+        Box(
+            modifier = Modifier
+                .animateEnterExit(enter = fadeIn(), exit = fadeOut())
+                .background(MaterialTheme.colorScheme.background.animate())
+                .fillMaxSize(),
+        ) {
+            CircularProgressIndicator(
+                color = MaterialTheme.colorScheme.primary.animate(),
+                strokeWidth = 4.dp,
+                modifier = Modifier
+                    .animateEnterExit(
+                        enter = slideInVertically(spring(stiffness = Spring.StiffnessLow)),
+                        exit = slideOutVertically(spring(stiffness = Spring.StiffnessLow))
+                    )
+                    .scale(1.8f)
+                    .align(Alignment.Center)
+            )
+        }
+    }
 }
 
 
 
 
 
-@ExperimentalTime
+
+@ExperimentalAnimationApi
+@ExperimentalFoundationApi
 @ExperimentalMaterial3Api
 @Preview(showBackground = true)
 @Composable
@@ -442,12 +507,12 @@ private fun DefaultPreview() {
 @Preview(showSystemUi = true, backgroundColor = 0xFFFFFF)
 @Composable
 private fun SquarePreview() {
-//    var square by remember { mutableStateOf(Square(12)) }
     var squaresMap by remember {
         mutableStateOf(mapOf(
-            Cords(0, 8) to Square(size = 4, color = Color.Red)
+            Cords(0, 8) to Square(sideLength = 4, color = Color.Red)
         ))
     }
+
     val squaresViewModel = SquaresViewModel(SquaresRepository())
     val scope = rememberCoroutineScope()
 
@@ -460,7 +525,6 @@ private fun SquarePreview() {
                         squaresViewModel
                             .calculateSquaresPositions(12, x4 = 4, x3 = 2)
                             ?.let { squaresMap = it }
-//                            ?.let { square = it }
                     }
                 },
                 modifier = Modifier
