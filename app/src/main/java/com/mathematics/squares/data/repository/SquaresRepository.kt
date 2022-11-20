@@ -23,6 +23,10 @@ class SquaresRepository {
         OrangeDark, OrangeLight, Pink80, Pink40
     )
 
+    private companion object {
+        const val secondsToWait = 8
+    }
+
     fun getRandomColor() = colors.apply { shuffle() }[0]
 
 
@@ -31,12 +35,14 @@ class SquaresRepository {
         squaresList: List<Square>,
     ): Map<Cords, Square> = withContext(Dispatchers.Default) {
         var result: Map<Cords, Square>?
+        val startTime = System.currentTimeMillis()
         do {
             val shuffledList = squaresList.shuffled()
             result = placeSquares(squareSideLength, shuffledList)
-        } while (result == null)
+            val currentTime = System.currentTimeMillis()
+        } while (result == null && currentTime - startTime < secondsToWait * 1000)
 
-        return@withContext result
+        return@withContext result ?: placeSquares(squareSideLength, squaresList) ?: emptyMap()
     }
 
 
@@ -52,9 +58,8 @@ class SquaresRepository {
         val loopDirection = getRandomDirection()
         val startVertex = getRandomStartVertex()
 
-        squaresList.forEach { square ->
-            // TODO: 20.11.2022 заменить
-            var flag = false
+
+        suspend fun placeSquare(square: Square): Cords? {
             for (position in startPosition until squareSideLength * squareSideLength) {
                 val cords = getNextCords(position, squareSideLength, loopDirection, startVertex)
 
@@ -67,33 +72,22 @@ class SquaresRepository {
                     }
                 }
 
-                if (topLeftCords != null) { //matrix.set(i, j, square)) {
-                    result[topLeftCords] = square
+                if (topLeftCords != null) {
                     startPosition = position + square.sideLength
-                    flag = true
-                    break
+                    return topLeftCords
                 }
             }
-            if (!flag) return null
+            return null
         }
 
-//        for (i in createRange()) {
-////            withContext(Dispatchers.Main) {
-//                for (j in createRange()) {
-//                    val currSquare = squaresList[squareIndex]
-//                    if (matrix.set(i, j, currSquare.size, currSquare.color)) {
-//                        result[i, j] = currSquare
-//                        squareIndex++
-//                        if (squareIndex >= squaresList.size)
-//                            break //return@withContext
-//                    }
-//                }
-////            }
-//            if (squareIndex >= squaresList.size) break
-//        }
 
-        withContext(Dispatchers.Default) {
-            matrix.filter { !it.isOccupied }.forEach {
+        squaresList.forEach { square ->
+            val cords = placeSquare(square) ?: return null
+            result[cords] = square
+        }
+
+        matrix.filter { !it.isOccupied }.forEach {
+            withContext(Dispatchers.Default) {
                 val color = getRandomColor()
                 matrix[it.x, it.y, 1] = color
                 result[it] = Square(1, color)

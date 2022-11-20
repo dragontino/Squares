@@ -204,7 +204,7 @@ private fun MainScreen(
                                     squareCountItems.values.toIntArray(),
                                     recalculate = recalculateSquares,
                                 )
-                                recalculateSquares = false
+                                recalculateSquares = !result
                                 calculating = false
 
                                 if (!result) {
@@ -469,7 +469,7 @@ private fun Loading(isLoading: Boolean) {
         ) {
             CircularProgressIndicator(
                 color = MaterialTheme.colorScheme.primary.animate(),
-                strokeWidth = 4.dp,
+                strokeWidth = 3.4.dp,
                 modifier = Modifier
                     .animateEnterExit(
                         enter = slideInVertically(spring(stiffness = Spring.StiffnessLow)),
