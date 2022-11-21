@@ -20,14 +20,16 @@ class SquaresRepository {
     private val colors = arrayOf(
         Color.Red, Color.Blue, Color.Green, Color.Yellow,
         Color.Magenta, Color.Cyan, Purple40, Purple80,
-        OrangeDark, OrangeLight, Pink80, Pink40
+        OrangeDark, OrangeLight, Pink80, Pink40,
+        Color.Gray, Color.DarkGray
     )
 
     private companion object {
-        const val secondsToWait = 8
+        const val secondsToWait = 12
     }
 
-    fun getRandomColor() = colors.apply { shuffle() }[0]
+    fun getRandomColor() = shuffleColors()[0]
+    fun shuffleColors() = colors.apply { shuffle() }
 
 
     suspend fun updateSquaresPositions(
@@ -48,49 +50,60 @@ class SquaresRepository {
 
 
     suspend fun placeSquares(
-        squareSideLength: Int,
+        fieldSideLength: Int,
         squaresList: List<Square>,
     ): Map<Cords, Square>? {
-        val matrix = Matrix(squareSideLength)
+        val matrix = Matrix(fieldSideLength)
         val result = HashMap<Cords, Square>()
 
-        var startPosition = 0
+        val tempList = squaresList.toMutableList()
         val loopDirection = getRandomDirection()
         val startVertex = getRandomStartVertex()
 
+        val newColors = shuffleColors()
 
-        suspend fun placeSquare(square: Square): Cords? {
-            for (position in startPosition until squareSideLength * squareSideLength) {
-                val cords = getNextCords(position, squareSideLength, loopDirection, startVertex)
-
-                val topLeftCords = withContext(Dispatchers.Main) {
-                    when (startVertex) {
-                        StartVertex.TopLeft -> matrix.fillAreaByTopLeft(cords, square)
-                        StartVertex.TopRight -> matrix.fillAreaByTopRight(cords, square)
-                        StartVertex.BottomLeft -> matrix.fillAreaByBottomLeft(cords, square)
-                        StartVertex.BottomRight -> matrix.fillAreaByBottomRight(cords, square)
+        if (squaresList.isNotEmpty()) {
+            for (position in 0 until fieldSideLength * fieldSideLength) {
+                var index = 0
+                label@
+                do {
+                    val square = tempList[index]
+                    val cords = getNextCords(position, fieldSideLength, loopDirection, startVertex)
+                    val topLeftCords = withContext(Dispatchers.Main) {
+                        when (startVertex) {
+                            StartVertex.TopLeft -> matrix.fillAreaByTopLeft(cords, square)
+                            StartVertex.TopRight -> matrix.fillAreaByTopRight(cords, square)
+                            StartVertex.BottomLeft -> matrix.fillAreaByBottomLeft(cords, square)
+                            StartVertex.BottomRight -> matrix.fillAreaByBottomRight(cords, square)
+                        }
                     }
-                }
 
-                if (topLeftCords != null) {
-                    startPosition = position + square.sideLength
-                    return topLeftCords
-                }
+                    if (topLeftCords != null) {
+                        tempList.remove(square)
+                        result[topLeftCords] = square.copy(
+                            color = if (square.sideLength == 1) {
+                                Color.Transparent
+                            } else {
+                                newColors[square.sideLength - 1]
+                            }
+                        )
+                        break@label
+                    }
+                    index++
+
+                } while (index < tempList.size)
+
+                if (tempList.isEmpty()) break
             }
-            return null
         }
 
+        if (tempList.isNotEmpty()) return null
 
-        squaresList.forEach { square ->
-            val cords = placeSquare(square) ?: return null
-            result[cords] = square
-        }
-
+        val colorForOne = Color.Transparent //getRandomColor()
         matrix.filter { !it.isOccupied }.forEach {
             withContext(Dispatchers.Default) {
-                val color = getRandomColor()
-                matrix[it.x, it.y, 1] = color
-                result[it] = Square(1, color)
+                matrix[it.x, it.y, 1] = colorForOne
+                result[it] = Square(1, colorForOne)
             }
         }
 
@@ -188,7 +201,7 @@ class SquaresRepository {
         object Consistently : LoopDirection()
 
         companion object {
-            fun objects() = arrayOf(Parallel, Consistently)
+            fun objects() = arrayOf(Parallel) //, Consistently)
         }
 
         fun transpose() {

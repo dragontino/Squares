@@ -106,7 +106,7 @@ private fun MainScreen(
     val squareCountItems = rememberSaveable {
         mutableMapOf("5x5" to 0, "4x4" to 0, "3x3" to 0, "2x2" to 0)
     }
-    var recalculateSquares by rememberSaveable { mutableStateOf(false) }
+    var recalculateSquares by rememberSaveable { mutableStateOf(true) }
     
     Scaffold(
         topBar = {

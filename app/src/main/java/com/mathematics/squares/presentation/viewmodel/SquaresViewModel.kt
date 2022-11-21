@@ -63,6 +63,8 @@ class SquaresViewModel(private val squaresRepository: SquaresRepository) : ViewM
 
 
     private fun getRandomColor() = squaresRepository.getRandomColor()
+    private fun getRandomColors(count: Int) =
+        squaresRepository.shuffleColors().sliceArray(0 until count)
 
 
     private fun Map<Cords, Square>.toSquaresList(squareSideLength: Int): List<Square> {
@@ -71,6 +73,7 @@ class SquaresViewModel(private val squaresRepository: SquaresRepository) : ViewM
             4 to getRandomColor(),
             3 to getRandomColor(),
             2 to getRandomColor(),
+            1 to getRandomColor(),
         )
         return this.keys.sorted()
             .map { cords ->
@@ -100,11 +103,11 @@ class SquaresViewModel(private val squaresRepository: SquaresRepository) : ViewM
         squareLength: Int,
         squareCounts: IntArray,
     ): Map<Cords, Square>? {
+        val colors = getRandomColors(squareCounts.size)
         val squaresList = buildList {
             squareCounts.forEachIndexed { index, count ->
-                val color = getRandomColor()
                 repeat(count) {
-                    this += Square(sideLength = 5 - index, color = color)
+                    this += Square(sideLength = 5 - index, color = colors[index])
                 }
             }
         }
